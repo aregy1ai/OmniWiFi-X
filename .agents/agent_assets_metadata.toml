@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "pZTa1zFzV7PQzTrsRlJMK"
+uri = "file://artifacts/omniwifi-x/assets/images/icon.png"
+type = "image"
+title = "generated_image"

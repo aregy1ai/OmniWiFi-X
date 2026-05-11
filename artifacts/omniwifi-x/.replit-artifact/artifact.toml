@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "OmniWiFi X"
+version = "1.0.0"
+id = "artifacts/omniwifi-x"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 25046
+
+[services.development]
+run = "pnpm --filter @workspace/omniwifi-x run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/omniwifi-x", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/omniwifi-x", "run", "serve" ]
+
+[services.env]
+PORT = "25046"
+BASE_PATH = "/"
