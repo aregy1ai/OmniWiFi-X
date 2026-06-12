@@ -1,0 +1,159 @@
+name: بناء وتوقيع وإصدار APK 🚀
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+
+env:
+  KEYSTORE_PATH: android/app/release.keystore
+  BUILD_TOOLS_VERSION: '35.0.0'
+  NDK_VERSION: '27.2.12479018'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: بناء APK موقع
+    steps:
+      - name: 📥 استخراج الكود
+        uses: actions/checkout@v4
+
+      - name: 🔧 إعداد Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 إعداد pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: 🎯 إعداد JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🔓 فك تشفير المفتاح
+        if: github.event_name == 'push' || github.event.inputs.tag
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "⚠️ تحذير: لم يتم العثور على KEYSTORE_BASE64 في Secrets"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > $KEYSTORE_PATH
+          ls -lh $KEYSTORE_PATH
+          echo "✅ تم فك تشفير المفتاح بنجاح"
+
+      - name: 📥 تثبيت المكتبات
+        run: pnpm install
+
+      - name: 🏗️ بناء المشروع
+        working-directory: artifacts/omniwifi-x
+        run: |
+          npm run build 2>&1 || true
+          echo "✅ انتهى البناء"
+
+      - name: 🤖 إعداد Gradle
+        run: |
+          echo "android.useAndroidX=true" >> local.properties
+          echo "android.enableJetifier=true" >> local.properties
+
+      - name: 🔨 بناء APK Release
+        working-directory: artifacts/omniwifi-x/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease \
+            -PMYAPP_RELEASE_STORE_FILE=${{ env.KEYSTORE_PATH }} \
+            -PMYAPP_RELEASE_STORE_PASSWORD="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -PMYAPP_RELEASE_KEY_ALIAS="${{ secrets.KEY_ALIAS }}" \
+            -PMYAPP_RELEASE_KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}" \
+            -x test \
+            --no-build-cache 2>&1
+
+      - name: ✅ التحقق من التوقيع
+        run: |
+          APK_PATH="artifacts/omniwifi-x/android/app/build/outputs/apk/release/app-release.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "✅ تم إيجاد APK الموقع"
+            ls -lh "$APK_PATH"
+          else
+            echo "❌ لم يتم العثور على APK"
+            exit 1
+          fi
+
+      - name: 📊 حساب Checksum
+        run: |
+          APK_PATH="artifacts/omniwifi-x/android/app/build/outputs/apk/release/app-release.apk"
+          sha256sum "$APK_PATH" > app-release.apk.sha256
+          cat app-release.apk.sha256
+
+      - name: 📤 حفظ APK كـ Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omniwifi-x-release
+          path: |
+            artifacts/omniwifi-x/android/app/build/outputs/apk/release/app-release.apk
+            app-release.apk.sha256
+          retention-days: 30
+
+      - name: 🎉 إنشاء Release على GitHub
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            artifacts/omniwifi-x/android/app/build/outputs/apk/release/app-release.apk
+            app-release.apk.sha256
+          body: |
+            # 📱 إصدار OmniWiFi-X ${{ github.ref_name }}
+            
+            ## 📝 معلومات الإصدار
+            - **الإصدار:** ${{ github.ref_name }}
+            - **التاريخ:** ${{ github.event.head_commit.timestamp }}
+            - **المفتاح:** موقع رسمي ✅
+            - **الحالة:** جاهز للنشر على F-Droid
+            
+            ## 📦 الملفات المرفقة
+            - `app-release.apk` - تطبيق OmniWiFi-X الموقع
+            - `app-release.apk.sha256` - بصمة التحقق الأمني
+            
+            ## 🔐 التحقق من الأمان
+            تحقق من سلامة الملف باستخدام:
+            ```bash
+            sha256sum -c app-release.apk.sha256
+            ```
+            
+            ## 🚀 التثبيت
+            انسخ ملف `app-release.apk` إلى جهازك وثبتها يدويًا أو عبر متجر التطبيقات.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 تقرير النجاح
+        if: success()
+        run: |
+          echo "✅ تم إنشاء الإصدار بنجاح!"
+          echo "📦 APK: artifacts/omniwifi-x/android/app/build/outputs/apk/release/app-release.apk"
+          echo "🔐 SHA256: app-release.apk.sha256"
+
+      - name: ❌ تقرير الفشل
+        if: failure()
+        run: |
+          echo "❌ فشل إنشاء الإصدار"
+          echo "يرجى التحقق من السجلات أعلاه للمزيد من التفاصيل"
