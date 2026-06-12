@@ -1,0 +1,6 @@
+OmniWiFi-X
+Advanced WiFi Management Application
+Complete network management, scanning, signal monitoring, and performance optimization
+Privacy-focused design with no tracking or ads
+Fully open-source under GPL-3.0 license
+Available on F-Droid
